@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>So sánh Nóng chảy: Kết tinh vs Vô định hình</title>
+<style>
+  :root { --bg: #1e1e1e; --panel: #2d2d2d; --accent: #3498db; --fire: #e67e22; }
+  body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #eee; margin: 0; height: 100vh; display: flex; overflow: hidden; }
+
+  /* Layout chia 3 cột: Controls - Mô phỏng - Đồ thị */
+  #layout { display: flex; width: 100%; height: 100%; }
+  
+  /* Cột 1: Điều khiển */
+  #controls { width: 250px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 20px; box-shadow: 2px 0 10px rgba(0,0,0,0.5); z-index: 10; }
+  
+  .control-group { background: #333; padding: 15px; border-radius: 8px; }
+  h3 { margin: 0 0 10px 0; font-size: 1.1rem; color: var(--accent); }
+  label { display: block; margin-bottom: 5px; font-size: 0.9rem; }
+  
+  /* Switch chọn loại chất */
+  .type-btn { width: 100%; padding: 10px; margin-bottom: 5px; border: 1px solid #555; background: #444; color: #aaa; cursor: pointer; transition: 0.2s; border-radius: 4px; }
+  .type-btn.active { background: var(--accent); color: white; border-color: var(--accent); font-weight: bold; }
+
+  /* Thanh trượt ngọn lửa */
+  input[type=range] { width: 100%; cursor: pointer; }
+  
+  /* Nút reset */
+  #btn-reset { background: #c0392b; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: auto; }
+  #btn-reset:hover { background: #e74c3c; }
+
+  /* Cột 2: Mô phỏng Hạt */
+  #sim-container { flex: 1; position: relative; background: #000; border-right: 1px solid #444; display: flex; flex-direction: column; }
+  #particleCanvas { flex: 1; display: block; width: 100%; }
+  
+  /* Hộp thuyết minh nằm giữa trên mô phỏng */
+  #explainBox {
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 70%;
+    background: rgba(0,0,0,0.8);
+    padding: 16px 20px;
+    border-radius: 12px;
+    font-size: 1rem;
+    line-height: 1.7;
+    border: 1px solid #555;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    z-index: 20;
+  }
+  #explainBox h4 {
+    margin: 0 0 6px;
+    font-size: 1.08rem;
+    color: #f1c40f;
+  }
+  #explainBox p { margin: 4px 0; }
+
+  /* Hình ảnh Bếp & Cốc */
+  #lab-setup { height: 150px; background: #111; position: relative; border-top: 1px solid #333; }
+  .beaker-base { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 200px; height: 10px; background: #555; border-radius: 5px; }
+  .flame { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 40px; height: 0px; background: radial-gradient(ellipse at bottom, #f1c40f 0%, #e67e22 60%, transparent 100%); transition: height 0.2s; filter: blur(2px); opacity: 0.8; border-radius: 50% 50% 20% 20%; }
+  .heater-knob { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); color: #888; font-size: 0.8rem; }
+
+  /* Cột 3: Đồ thị & Nhiệt kế */
+  #data-panel { width: 350px; background: #1a1a1a; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+  
+  /* Nhiệt kế */
+  #thermometer-box { display: flex; align-items: center; gap: 15px; background: #222; padding: 15px; border-radius: 8px; }
+  .thermometer-tube { width: 20px; height: 150px; background: #444; border-radius: 10px; position: relative; border: 2px solid #666; overflow: hidden; }
+  .thermometer-liquid { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: linear-gradient(to top, #3498db, #e74c3c); transition: height 0.2s; }
+  .temp-readout { font-size: 2rem; font-weight: bold; font-family: monospace; color: #e74c3c; }
+
+  /* Đồ thị Canvas */
+  #graph-container { flex: 1; background: #222; border-radius: 8px; position: relative; border: 1px solid #444; }
+  #graphCanvas { width: 100%; height: 100%; display: block; }
+  .graph-label { position: absolute; top: 10px; left: 10px; font-size: 0.8rem; color: #888; }
+
+</style>
+</head>
+<body>
+
+<div id="layout">
+  <div id="controls">
+    <h2>Phòng Thí Nghiệm</h2>
+    
+    <div class="control-group">
+      <h3>1. Chọn mẫu vật chất</h3>
+      <button class="type-btn active" onclick="setMaterial('crystalline')">💎 Chất rắn KẾT TINH<br><small>(Sắt, Băng phiến, Nước đá)</small></button>
+      <button class="type-btn" onclick="setMaterial('amorphous')">🕯️ Chất rắn VÔ ĐỊNH HÌNH<br><small>(Thủy tinh, Nhựa đường, Nến)</small></button>
+    </div>
+
+    <div class="control-group">
+      <h3>2. Nguồn Nhiệt (Bếp)</h3>
+      <label>Công suất lửa:</label>
+      <input type="range" id="fireSlider" min="0" max="100" value="0">
+      <div style="text-align: right; color: var(--fire); font-weight: bold;" id="fireVal">Tắt</div>
+    </div>
+    
+    <div style="font-size: 0.85rem; color: #aaa; line-height: 1.4;">
+      <strong>Quan sát:</strong>
+      <ul style="padding-left: 20px; margin: 5px 0;">
+        <li>Theo dõi đồ thị nhiệt độ bên phải.</li>
+        <li>Kết tinh: Nhiệt độ sẽ <b>dừng lại</b> khi đang tan chảy.</li>
+        <li>Vô định hình: Nhiệt độ <b>tăng liên tục</b>.</li>
+      </ul>
+    </div>
+
+    <button id="btn-reset" onclick="resetSim()">Làm mới thí nghiệm</button>
+  </div>
+
+  <div id="sim-container">
+    <!-- Hộp thuyết minh nằm giữa phía trên -->
+    <div id="explainBox"></div>
+
+    <canvas id="particleCanvas"></canvas>
+    
+    <div id="lab-setup">
+      <div class="beaker-base"></div>
+      <div class="flame" id="flameVisual"></div>
+      <div class="heater-knob">Nguồn nóng</div>
+      
+      <div style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 4px; pointer-events: none;">
+        <span style="color: #3498db">● Rắn (Liên kết)</span> &nbsp; 
+        <span style="color: #e74c3c">● Lỏng (Tự do)</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="data-panel">
+    <h3>Nhiệt kế điện tử</h3>
+    <div id="thermometer-box">
+      <div class="thermometer-tube">
+        <div class="thermometer-liquid" id="thermoLiquid"></div>
+      </div>
+      <div>
+        <div class="temp-readout" id="tempText">20°C</div>
+        <div style="font-size: 0.8rem; color: #888;">Nhiệt độ mẫu vật</div>
+      </div>
+    </div>
+
+    <h3>Đồ thị Nhiệt độ (T) / Thời gian (t)</h3>
+    <div id="graph-container">
+      <canvas id="graphCanvas"></canvas>
+      <div class="graph-label">Trục tung: Nhiệt độ (°C) <br> Trục hoành: Thời gian</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * CẤU HÌNH VẬT LÝ & BIẾN TOÀN CỤC
+ */
+const pCanvas = document.getElementById('particleCanvas');
+const pCtx = pCanvas.getContext('2d');
+const gCanvas = document.getElementById('graphCanvas');
+const gCtx = gCanvas.getContext('2d');
+
+let particles = [];
+let materialType = 'crystalline'; // 'crystalline' hoặc 'amorphous'
+
+// Thông số nhiệt động lực học
+let heatPower = 0; // Công suất bếp (0-100)
+let systemTemp = 20; // Nhiệt độ bắt đầu (20 độ C)
+let latentHeatBuffer = 0; // Bộ đệm ẩn nhiệt (Dùng cho chất kết tinh)
+let time = 0; // Thời gian mô phỏng
+let historyData = []; // Dữ liệu vẽ đồ thị
+
+// Hằng số Vật lý giả lập
+const MELTING_POINT = 80; // Nhiệt độ nóng chảy của chất kết tinh
+const LATENT_HEAT_CAPACITY = 2000;
+const BOND_STRENGTH_CRYSTAL = 0.8;
+const BOND_STRENGTH_AMORPHOUS_MIN = 0.2;
+const BOND_STRENGTH_AMORPHOUS_MAX = 0.9;
+
+/* ====== NỘI DUNG THUYẾT MINH ====== */
+const EXPLAIN_IDLE_CRYSTAL = `
+  <h4>Chất rắn kết tinh ở nhiệt độ phòng</h4>
+  <p>Các phân tử sắp xếp rất <b>ngăn nắp</b> trong mạng tinh thể và chỉ dao động nhẹ quanh vị trí cân bằng.
+  Chưa có nhiệt lượng từ bếp nên <b>nhiệt độ vật rắn gần như không đổi</b>.</p>
+`;
+
+const EXPLAIN_HEATING_CRYSTAL = `
+  <h4>1. Trước khi đạt nhiệt độ nóng chảy</h4>
+  <p>Khi <u>nung nóng</u> một vật rắn kết tinh, các <b>phân tử</b> của vật rắn <b>nhận nhiệt lượng</b>.
+  Năng lượng nhiệt này khiến <b>dao động</b> của các phân tử tại các nút mạng <b>mạnh lên</b>,
+  vì vậy <b>vận tốc chuyển động nhiệt</b> tăng và <b>nhiệt độ vật rắn tăng dần</b>.</p>
+`;
+
+const EXPLAIN_MELTING_CRYSTAL = `
+  <h4>2. Đang nóng chảy – nhiệt độ không đổi</h4>
+  <p>Khi nhiệt độ đạt giá trị <b>nóng chảy</b>, các phân tử thắng được <b>lực liên kết</b>
+  và <b>thoát khỏi vị trí cân bằng</b>. Đây là sự khởi đầu của <b>quá trình nóng chảy</b>.</p>
+  <p><b>Nhiệt lượng</b> cung cấp lúc này chủ yếu dùng để <b>phá vỡ các liên kết trong mạng tinh thể</b>,
+  nên <b>không làm tăng nhiệt độ</b> của chất. Trên đồ thị, giai đoạn này là đoạn <b>nằm ngang</b>.</p>
+`;
+
+const EXPLAIN_LIQUID_CRYSTAL = `
+  <h4>3. Sau khi nóng chảy hoàn toàn</h4>
+  <p>Khi <b>trật tự tinh thể</b> đã bị phá vỡ hoàn toàn, toàn bộ mẫu vật chuyển sang <b>thể lỏng</b>.</p>
+  <p>Nếu tiếp tục đun, <b>nhiệt độ chất lỏng lại tăng dần</b>, các phân tử chuyển động hỗn loạn và không còn
+  vị trí cố định như ban đầu.</p>
+`;
+
+const EXPLAIN_AMORPHOUS = `
+  <h4>Chất rắn vô định hình khi nung nóng</h4>
+  <p>Trong chất rắn <b>vô định hình</b> (thủy tinh, nhựa đường, nến...), các liên kết giữa phân tử <b>không đồng đều</b>.</p>
+  <p>Khi nung nóng, các vùng liên kết yếu <b>mềm ra trước</b>, rồi dần dần đến vùng liên kết mạnh hơn.
+  Do đó <b>không có một nhiệt độ nóng chảy xác định</b>: nhiệt độ của mẫu vật <b>tăng liên tục</b>,
+  đồ thị <b>không có đoạn nằm ngang rõ rệt</b>.</p>
+`;
+
+/* Hàm cập nhật nội dung thuyết minh */
+function setExplanation(html) {
+  document.getElementById('explainBox').innerHTML = html;
+}
+
+function updateExplanation() {
+  if (materialType === 'crystalline') {
+    const bondedCount = particles.filter(p => p.isBonded).length;
+    const total = particles.length || 1;
+    const liquidRatio = (total - bondedCount) / total;
+
+    if (heatPower === 0 && systemTemp <= 25) {
+      setExplanation(EXPLAIN_IDLE_CRYSTAL);
+    } else if (systemTemp < MELTING_POINT - 2) {
+      setExplanation(EXPLAIN_HEATING_CRYSTAL);
+    } else if (systemTemp >= MELTING_POINT - 2 && bondedCount > 0) {
+      setExplanation(EXPLAIN_MELTING_CRYSTAL);
+    } else if (liquidRatio > 0.95) {
+      setExplanation(EXPLAIN_LIQUID_CRYSTAL);
+    } else {
+      setExplanation(EXPLAIN_MELTING_CRYSTAL);
+    }
+  } else {
+    setExplanation(EXPLAIN_AMORPHOUS);
+  }
+}
+
+/* ====== HẾT PHẦN THUYẾT MINH ====== */
+
+// Resize canvas
+function resize() {
+  pCanvas.width = pCanvas.parentElement.offsetWidth;
+  pCanvas.height = pCanvas.parentElement.offsetHeight - 150; // chừa chỗ cho lab-setup
+  gCanvas.width = gCanvas.parentElement.offsetWidth;
+  gCanvas.height = gCanvas.parentElement.offsetHeight;
+  if(particles.length === 0) initParticles();
+}
+window.addEventListener('resize', resize);
+
+/**
+ * CLASS HẠT
+ */
+class Particle {
+  constructor(x, y, isFixedGrid) {
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.originX = x; this.originY = y;
+    this.isBonded = true; 
+    if (isFixedGrid) {
+        this.bondEnergy = 1.0;
+    } else {
+        this.bondEnergy = 0.5 + Math.random() * 0.5;
+    }
+  }
+}
+
+/**
+ * KHỞI TẠO HỆ THỐNG
+ */
+function initParticles() {
+  particles = [];
+  const rows = 12; const cols = 20;
+  const spacing = 25;
+  const startX = (pCanvas.width - cols * spacing) / 2 + spacing/2;
+  const startY = pCanvas.height - (rows * spacing) - 20;
+
+  for(let r=0; r<rows; r++) {
+    for(let c=0; c<cols; c++) {
+      let x = startX + c * spacing;
+      let y = startY + r * spacing;
+
+      if (materialType === 'crystalline') {
+        if (r % 2 !== 0) x += spacing / 2;
+        particles.push(new Particle(x, y, true));
+      } else {
+        let randX = (Math.random() - 0.5) * 15;
+        let randY = (Math.random() - 0.5) * 15;
+        particles.push(new Particle(x + randX, y + randY, false));
+      }
+    }
+  }
+}
+
+/**
+ * LOGIC VẬT LÝ CHÍNH (LOOP)
+ */
+function updatePhysics() {
+  if (heatPower > 0) {
+      let energyInput = heatPower * 0.05; 
+      
+      if (materialType === 'crystalline') {
+          if (systemTemp >= MELTING_POINT) {
+              let bondedCount = particles.filter(p => p.isBonded).length;
+              
+              if (bondedCount > 0) {
+                  latentHeatBuffer += energyInput * 5; 
+                  if (latentHeatBuffer > 10) { 
+                      let bondedParticles = particles.filter(p => p.isBonded);
+                      if (bondedParticles.length > 0) {
+                          let p = bondedParticles[Math.floor(Math.random() * bondedParticles.length)];
+                          p.isBonded = false;
+                      }
+                      latentHeatBuffer = 0;
+                  }
+                  systemTemp = MELTING_POINT + (Math.random() - 0.5); 
+              } else {
+                  systemTemp += energyInput * 0.5;
+              }
+          } else {
+              systemTemp += energyInput;
+          }
+      } else {
+          systemTemp += energyInput;
+          particles.forEach(p => {
+              if (p.isBonded) {
+                  let threshold = 40 + p.bondEnergy * 100;
+                  if (systemTemp > threshold) p.isBonded = false;
+              }
+          });
+      }
+  } else {
+      if (systemTemp > 20) systemTemp -= 0.1;
+  }
+
+  particles.forEach(p => {
+      let vibration = systemTemp * 0.02;
+      p.vx += (Math.random() - 0.5) * vibration;
+      p.vy += (Math.random() - 0.5) * vibration;
+
+      if (p.isBonded) {
+          let k = (materialType === 'amorphous') ? 0.05 : 0.1;
+          p.vx += (p.originX - p.x) * k;
+          p.vy += (p.originY - p.y) * k;
+          p.vx *= 0.8; p.vy *= 0.8;
+      } else {
+          p.vy += 0.2;
+          let maxSpeed = 2;
+          p.vx = Math.max(-maxSpeed, Math.min(maxSpeed, p.vx));
+          p.vy = Math.max(-maxSpeed, Math.min(maxSpeed, p.vy));
+          p.vx *= 0.95; p.vy *= 0.95;
+      }
+      
+      particles.forEach(other => {
+          if (p === other) return;
+          let dx = p.x - other.x;
+          let dy = p.y - other.y;
+          let distSq = dx*dx + dy*dy;
+          if (distSq < 100) {
+              let dist = Math.sqrt(distSq);
+              let force = (10 - dist) * 0.2;
+              let angle = Math.atan2(dy, dx);
+              p.vx += Math.cos(angle) * force;
+              p.vy += Math.sin(angle) * force;
+          }
+      });
+
+      p.x += p.vx;
+      p.y += p.vy;
+
+      if (p.x < 5) { p.x = 5; p.vx *= -0.5; }
+      if (p.x > pCanvas.width - 5) { p.x = pCanvas.width - 5; p.vx *= -0.5; }
+      if (p.y > pCanvas.height - 5) { p.y = pCanvas.height - 5; p.vy *= -0.5; }
+      if (p.y < 5) { p.y = 5; p.vy *= -0.5; }
+  });
+
+  if (time % 10 === 0) {
+      historyData.push(systemTemp);
+      if (historyData.length > gCanvas.width) historyData.shift();
+  }
+  time++;
+
+  updateExplanation();
+}
+
+/**
+ * VẼ HÌNH
+ */
+function draw() {
+  pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+  
+  particles.forEach(p => {
+    pCtx.beginPath();
+    pCtx.arc(p.x, p.y, 5, 0, Math.PI*2);
+    pCtx.fillStyle = p.isBonded ? '#3498db' : '#e74c3c';
+    pCtx.fill();
+    pCtx.strokeStyle = "rgba(255,255,255,0.2)";
+    pCtx.stroke();
+  });
+
+  if (materialType === 'crystalline') {
+      pCtx.strokeStyle = "rgba(255,255,255,0.1)";
+      pCtx.beginPath();
+      particles.forEach(p => {
+          if (!p.isBonded) return;
+          particles.forEach(other => {
+              if (!other.isBonded || p === other) return;
+              let dx = p.x - other.x;
+              let dy = p.y - other.y;
+              if (Math.abs(dx) < 30 && Math.abs(dy) < 30) {
+                  pCtx.moveTo(p.x, p.y);
+                  pCtx.lineTo(other.x, other.y);
+              }
+          });
+      });
+      pCtx.stroke();
+  }
+
+  let heightPercent = Math.min(100, (systemTemp / 150) * 100);
+  document.getElementById('thermoLiquid').style.height = heightPercent + "%";
+  document.getElementById('tempText').innerText = Math.round(systemTemp) + "°C";
+
+  drawGraph();
+
+  updatePhysics();
+  requestAnimationFrame(draw);
+}
+
+function drawGraph() {
+    gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+    
+    gCtx.strokeStyle = "#333";
+    gCtx.lineWidth = 1;
+    gCtx.beginPath();
+    let meltY = gCanvas.height - (MELTING_POINT / 150) * gCanvas.height;
+    gCtx.moveTo(0, meltY);
+    gCtx.lineTo(gCanvas.width, meltY);
+    gCtx.stroke();
+    
+    gCtx.fillStyle = "#666";
+    gCtx.fillText("80°C", 5, meltY - 5);
+
+    if (historyData.length < 2) return;
+    
+    gCtx.beginPath();
+    gCtx.strokeStyle = "#e67e22";
+    gCtx.lineWidth = 2;
+    
+    for (let i = 0; i < historyData.length; i++) {
+        let t = historyData[i];
+        let x = i;
+        let y = gCanvas.height - (t / 150) * gCanvas.height;
+        if (i === 0) gCtx.moveTo(x, y);
+        else gCtx.lineTo(x, y);
+    }
+    gCtx.stroke();
+    
+    let lastX = historyData.length - 1;
+    let lastY = gCanvas.height - (systemTemp / 150) * gCanvas.height;
+    gCtx.fillStyle = "white";
+    gCtx.beginPath();
+    gCtx.arc(lastX, lastY, 3, 0, Math.PI*2);
+    gCtx.fill();
+}
+
+/**
+ * XỬ LÝ SỰ KIỆN UI
+ */
+const fireSlider = document.getElementById('fireSlider');
+const fireVal = document.getElementById('fireVal');
+const flameVisual = document.getElementById('flameVisual');
+const btns = document.querySelectorAll('.type-btn');
+
+fireSlider.addEventListener('input', (e) => {
+    heatPower = parseInt(e.target.value);
+    if (heatPower === 0) {
+        fireVal.innerText = "Tắt";
+        flameVisual.style.height = "0px";
+    } else {
+        fireVal.innerText = heatPower + "%";
+        flameVisual.style.height = (heatPower * 0.8) + "px"; 
+    }
+});
+
+function setMaterial(type) {
+    materialType = type;
+    btns.forEach(b => b.classList.remove('active'));
+    if (type === 'crystalline') btns[0].classList.add('active');
+    else btns[1].classList.add('active');
+    
+    resetSim();
+}
+
+function resetSim() {
+    systemTemp = 20;
+    heatPower = 0;
+    latentHeatBuffer = 0;
+    time = 0;
+    historyData = [];
+    
+    fireSlider.value = 0;
+    fireVal.innerText = "Tắt";
+    flameVisual.style.height = "0px";
+    
+    initParticles();
+    updateExplanation();
+}
+
+// Chạy
+resize();
+initParticles();
+updateExplanation();
+draw();
+
+</script>
+</body>
+</html>
